@@ -1,0 +1,93 @@
+Description: Cloudformation template to create Memcached nodes
+Parameters:
+  NetworkStackName:
+    Description: Network Stack Name.
+    MinLength: 3
+    MaxLength: 60
+    Type: String
+    Default: wp-network
+  SecurityStackName:
+    Description: Security Stack Name.
+    MinLength: 3
+    MaxLength: 60
+    Type: String
+    Default: wp-security
+  NodeType:
+    Type: String
+    Description: Select node type to deploy Elasticache on
+    AllowedValues:
+    - cache.t3.small
+    - cache.t3.medium
+    - cache.r6g.large
+    - cache.r6g.xlarge
+    - cache.r6g.2xlarge
+    - cache.r6g.4xlarge
+    - cache.r6g.8xlarge
+    - cache.r6g.12xlarge
+    - cache.r6g.16xlarge
+    - cache.r5.large
+    - cache.r5.xlarge
+    - cache.r5.2xlarge
+    - cache.r5.4xlarge
+    - cache.r5.12xlarge
+    - cache.r5.24xlarge
+    - cache.m6g.large
+    - cache.m6g.xlarge
+    - cache.m6g.2xlarge
+    - cache.m6g.4xlarge
+    - cache.m6g.8xlarge
+    - cache.m6g.12xlarge
+    - cache.m6g.16xlarge
+    - cache.m5.large
+    - cache.m5.xlarge
+    - cache.m5.2xlarge
+    - cache.m5.4xlarge
+    - cache.m5.12xlarge
+    - cache.m5.24xlarge
+    Default: cache.t3.medium
+Resources:
+  WPCacheNodes:
+    Type: AWS::ElastiCache::CacheCluster
+    Properties:
+      ClusterName: wp-ha-cache
+      AZMode: cross-az
+      CacheSubnetGroupName: !Ref WPCacheSubentGroup
+      Engine: memcached
+      EngineVersion: 1.6.6
+      CacheNodeType: !Ref NodeType
+      NumCacheNodes: 2
+      VpcSecurityGroupIds:
+        - Fn::ImportValue: !Sub "${SecurityStackName}-WPCacheSG"
+      Port: 11211
+      Tags:
+      - Key: Name
+        Value: WP-PublicSubnet01
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  WPCacheSubentGroup:
+    Type: AWS::ElastiCache::SubnetGroup
+    Properties:
+      CacheSubnetGroupName: WPCacheSubnets
+      Description: Subnet Groups for ElastiCache
+      SubnetIds:
+      - Fn::ImportValue: !Sub "${NetworkStackName}-DataSubnet01"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-DataSubnet02"
+Outputs:
+  WPCacheEndpoint:
+    Value:
+      !GetAtt
+      - WPCacheNodes
+      - ConfigurationEndpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-WPCacheEndpoint"
+  WPCacheEndpointPort:
+    Value:
+      !GetAtt
+      - WPCacheNodes
+      - ConfigurationEndpoint.Port
+    Export:
+      Name: !Sub "${AWS::StackName}-WPCacheEndpointPort"

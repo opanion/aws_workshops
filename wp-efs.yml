@@ -1,0 +1,54 @@
+Description: Cloudformation template to create EFS mount points
+Parameters:
+  NetworkStackName:
+    Description: Network Stack Name.
+    MinLength: 3
+    MaxLength: 60
+    Type: String
+    Default: wp-network
+  SecurityStackName:
+    Description: Security Stack Name.
+    MinLength: 3
+    MaxLength: 60
+    Type: String
+    Default: wp-security
+Resources:
+  WPFSResource:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+      FileSystemTags:
+      - Key: Name
+        Value: WP-EFS
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  MountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref WPFSResource
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-DataSubnet01"
+      SecurityGroups:
+      - Fn::ImportValue: !Sub "${SecurityStackName}-WPFSSG"
+  MountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref WPFSResource
+      SubnetId: 
+        Fn::ImportValue: !Sub "${NetworkStackName}-DataSubnet02"
+      SecurityGroups:
+      - Fn::ImportValue: !Sub "${SecurityStackName}-WPFSSG"
+  AccessPointResource:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref WPFSResource
+Outputs:
+  FSAPURI:
+    Value: !Ref AccessPointResource
+    Export:
+      Name: !Sub "${AWS::StackName}-FSAPURI"

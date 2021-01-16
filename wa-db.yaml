@@ -1,0 +1,157 @@
+Description: Creates an Aurora Database cluster
+Parameters:
+  EnvironmentStage:
+    Description: Environment you are deploying to
+    Type: String
+    AllowedValues:
+    - prod
+    - test
+    Default: test
+  DBName:
+    Description: DB Name
+    Type: String
+    MinLength: 1
+    MaxLength: 64
+    AllowedPattern: "^[a-zA-Z]+[0-9a-zA-Z_]*$"
+  DBPort:
+    Description: DB Port
+    Type: Number
+    Default: 3306
+  DBEngineVersion:
+    Description: Select Database Engine Version
+    Type: String
+    Default: 5.7
+    AllowedValues:
+      - 5.7
+      - 5.6
+  NetworkStackName:
+    Description: Name of an active CloudFormation stack that contains the networking resources, such as the subnet and security group, that will be used in this stack.
+    Type: String
+    MinLength: 1
+    MaxLength: 255
+    AllowedPattern: "^[a-zA-Z][-a-zA-Z0-9]*$"
+    Default : wp-network
+  SecurityStackName:
+    Description: Name of an active CloudFormation stack that contains the security groups.
+    Type: String
+    MinLength: 1
+    MaxLength: 255
+    AllowedPattern: "^[a-zA-Z][-a-zA-Z0-9]*$"
+    Default : wp-security
+  MasterUsername:
+    Type: String
+    MinLength: 5
+    MaxLength: 20
+    Default: wpadmin
+  MasterUserPassword:
+    Type: String
+    MinLength: 5
+    MaxLength: 20
+    NoEcho: true
+  DBInstanceClass:
+    Type: String
+    AllowedValues:
+    - db.t3.small
+    - db.t3.medium
+    - db.r5.large
+    - db.r5.xlarge
+    - db.r5.2xlarge
+    - db.r5.4xlarge
+    - db.r5.8xlarge
+    - db.r5.16xlarge
+    - db.r5.24xlarge
+    Default: db.t3.medium
+Conditions:
+  IsProd: !Equals [!Ref EnvironmentStage, prod]
+  IsReplica: !Condition IsProd
+
+Resources:
+  WPDBSubnetGroups:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Ref 'AWS::StackName'
+      SubnetIds:
+      - Fn::ImportValue: !Sub "${NetworkStackName}-DataSubnet01"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-DataSubnet02"
+  WPDBCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-mysql
+      EngineVersion: !Ref DBEngineVersion
+      EngineMode: provisioned
+      DBSubnetGroupName: !Ref WPDBSubnetGroups
+      MasterUsername: !Ref MasterUsername
+      MasterUserPassword: !Ref MasterUserPassword
+      DatabaseName: !Ref DBName
+      VpcSecurityGroupIds:
+      - Fn::ImportValue: !Sub "${SecurityStackName}-WPDatabaseSG"
+      Port: !Ref DBPort
+      Tags:
+      - Key: Name
+        Value: WPDatabaseCluster
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  WPDBFirstInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceClass: !Ref DBInstanceClass
+      DBClusterIdentifier: !Ref WPDBCluster
+      PubliclyAccessible: false
+      Engine: aurora-mysql
+      Tags:
+      - Key: Name
+        Value: WPDatabaseCluster
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+      - Key: Environment
+        Value: !Ref EnvironmentStage
+  WPDBSecondInstance:
+    Type: AWS::RDS::DBInstance
+    DependsOn:
+    - WPDBFirstInstance
+    Condition: IsReplica
+    Properties:
+      DBInstanceClass: !Ref DBInstanceClass
+      DBClusterIdentifier: !Ref WPDBCluster
+      PubliclyAccessible: false
+      Engine: aurora-mysql
+      Tags:
+      - Key: Name
+        Value: WPDatabaseCluster
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+      - Key: Environment
+        Value: !Ref EnvironmentStage
+Outputs:
+  DbName:
+    Value: !Ref DBName
+    Export:
+      Name: !Sub "${AWS::StackName}-DBName"
+  ClusterEndpoint:
+    Value: !GetAtt WPDBCluster.Endpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-ClusterEndpoint"
+  ReaderEndpoint:
+    Value: !GetAtt WPDBCluster.ReadEndpoint.Address
+    Export:
+      Name: !Sub "${AWS::StackName}-ReaderEndpoint"
+  Port:
+    Value: !Ref DBPort
+    Export:
+      Name: !Sub "${AWS::StackName}-Port"
+  Username:
+    Value: !Ref MasterUsername
+    Export:
+      Name: !Sub "${AWS::StackName}-Username"

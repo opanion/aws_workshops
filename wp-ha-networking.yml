@@ -1,0 +1,295 @@
+Description: This template deploys a VPC, with a pair of public ,application and data subnets spread
+  across two Availability Zones. It deploys an internet gateway, with a default
+  route on the public subnets. It deploys a pair of NAT gateways (one in each AZ),
+  and default routes for them in the private subnets.
+Parameters:
+  VPCCidr:
+    Description: Enter a CIDR block for the VPC
+    Type: String
+    Default: 192.168.0.0/16
+Resources:
+  WPVPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VPCCidr
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      InstanceTenancy: default
+      Tags:
+        - Key: Name
+          Value: WPVPC
+        - Key: Owner
+          Value: Emmanuel
+        - Key: Application
+          Value: Wordpress
+        - Key: Activity
+          Value: AWS Workshop
+  WPIGW:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+      - Key: Name
+        Value: WP-PublicSubnet01
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  WPIGWAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref WPIGW
+      VpcId: !Ref WPVPC
+  WPEIP01:
+    DependsOn: WPIGWAttachment
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+      - Key: Name
+        Value: WPEIP01
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  WPEIP02:
+    DependsOn: WPIGWAttachment
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+      - Key: Name
+        Value: WP-EIP01
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  WPNATGW01:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt WPEIP01.AllocationId
+      SubnetId: !Ref PublicSubnet01
+      Tags:
+      - Key: Name
+        Value: WP-NATGW01
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  WPNATGW02:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt WPEIP02.AllocationId
+      SubnetId: !Ref PublicSubnet02
+      Tags:
+      - Key: Name
+        Value: WP-NATGW02
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  PublicSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WPVPC
+      CidrBlock: !Select [0, !Cidr [ !GetAtt WPVPC.CidrBlock,6,8 ]]
+      AvailabilityZone: !Select [0, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: WP-PublicSubnet01
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  PublicSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WPVPC
+      CidrBlock: !Select [1, !Cidr [ !GetAtt WPVPC.CidrBlock,6,8 ]]
+      AvailabilityZone: !Select [1, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: WP-PublicSubnet02
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  ApplicationSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WPVPC
+      CidrBlock: !Select [2, !Cidr [ !GetAtt WPVPC.CidrBlock,6,8 ]]
+      AvailabilityZone: !Select [0, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: WP-ApplicationSubnet01
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  ApplicationSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WPVPC
+      CidrBlock: !Select [3, !Cidr [ !GetAtt WPVPC.CidrBlock,6,8 ]]
+      AvailabilityZone: !Select [1, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: WP-ApplicationSubnet02
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  DataSubnet01:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WPVPC
+      CidrBlock: !Select [4, !Cidr [ !GetAtt WPVPC.CidrBlock,6,8 ]]
+      AvailabilityZone: !Select [0, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: WP-VPC
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  DataSubnet02:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref WPVPC
+      CidrBlock: !Select [5, !Cidr [ !GetAtt WPVPC.CidrBlock,6,8 ]]
+      AvailabilityZone: !Select [1, !GetAZs ]
+      Tags:
+      - Key: Name
+        Value: WP-VPC
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref WPVPC
+      Tags:
+      - Key: Name
+        Value: WP-PublicRouteTable
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  ApplicationRouteTable01:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref WPVPC
+      Tags:
+      - Key: Name
+        Value: WP-ApplicationRouteTable01
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  ApplicationRouteTable02:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref WPVPC
+      Tags:
+      - Key: Name
+        Value: WP-ApplicationRouteTable02
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  WPNATGatewayDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref WPIGW
+      RouteTableId: !Ref PublicRouteTable
+  WPApplicationDefaultRoute01:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId: !Ref ApplicationRouteTable01
+      NatGatewayId: !Ref WPNATGW01
+  WPApplicationRoute02:
+    Type: AWS::EC2::Route
+    Properties:
+      DestinationCidrBlock: 0.0.0.0/0
+      RouteTableId: !Ref ApplicationRouteTable02
+      NatGatewayId: !Ref WPNATGW02
+  WPPublicSubnet01RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet01
+      RouteTableId: !Ref PublicRouteTable
+  WPPublicSubnet02RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet02
+      RouteTableId: !Ref PublicRouteTable
+  WPApplicationSubnet01RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ApplicationSubnet01
+      RouteTableId: !Ref ApplicationRouteTable01
+  WPApplicationSubnet02RTAssoc:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref ApplicationSubnet02
+      RouteTableId: !Ref ApplicationRouteTable02
+Outputs:
+  VpcId:
+    Value: !Ref WPVPC
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcId"
+  PublicSubnet01:
+    Value: !Ref PublicSubnet01
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnet01"
+  PublicSubnet02:
+    Value: !Ref PublicSubnet02
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnet02"
+  ApplicationSubnet01:
+    Value: !Ref ApplicationSubnet01
+    Export:
+      Name: !Sub "${AWS::StackName}-ApplicationSubnet01"
+  ApplicationSubnet02:
+    Value: !Ref ApplicationSubnet02
+    Export:
+      Name: !Sub "${AWS::StackName}-ApplicationSubnet02"
+  DataSubnet01:
+    Value: !Ref DataSubnet01
+    Export:
+      Name: !Sub "${AWS::StackName}-DataSubnet01"
+  DataSubnet02:
+    Value: !Ref DataSubnet02
+    Export:
+      Name: !Sub "${AWS::StackName}-DataSubnet02"

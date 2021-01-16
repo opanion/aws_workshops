@@ -1,0 +1,127 @@
+Description: Cloudformation template for WP HA Security Groups.
+Parameters:
+  NetworkStackName:
+    Description: Name of an active CloudFormation stack that contains the networking resources, such as the subnet and security group, that will be used in this stack.
+    Type: String
+    MinLength: 1
+    MaxLength: 255
+    AllowedPattern: "^[a-zA-Z][-a-zA-Z0-9]*$"
+    Default : wp-network
+Resources:
+  WPDatabaseClientSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: WPDatabaseClientSG
+      GroupDescription: Security Group for nodes connecting to Database endpoints
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+  WPDatabaseSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: WPDatabaseSG
+      GroupDescription: Security Group for database endpoints accepting connections from nodes with Database client SG
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        SourceSecurityGroupId: !Ref WPDatabaseClientSG
+        FromPort: 3306
+        ToPort: 3306
+  WPCacheClientSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: WPCacheClientSG
+      GroupDescription: Security Group for nodes connecting to Database endpoints
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+  WPCacheSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: WPCacheSG
+      GroupDescription: Security Group for memcached nodes accepting connections from nodes with Cache client SG
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        SourceSecurityGroupId: !Ref WPCacheClientSG
+        FromPort: 11211
+        ToPort: 11211
+  WPFSClientSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: WPFSClientSG
+      GroupDescription: Security Group for nodes connecting to EFS mount targets
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+  WPFSSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: WPFSSG
+      GroupDescription: Security Group for FS mount targets accepting connections from nodes with FS client SG
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        SourceSecurityGroupId: !Ref WPFSClientSG
+        FromPort: 2049
+        ToPort: 2049
+  WPLoadbalancerSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: WPLoadbalancerSG
+      GroupDescription: Security Group for inbound access to LBs
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        CidrIp: 0.0.0.0/0
+        FromPort: 3306
+        ToPort: 3306
+  WPWordpressSG:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: WPWordpressSG
+      GroupDescription: Security Group allowing access from only LB to wordpress ASG
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+  WPWordpressSGIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref WPWordpressSG
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref WPLoadbalancerSG
+Outputs:
+  WPDatabaseClientSG:
+    Value: !Ref WPDatabaseClientSG
+    Export:
+      Name: !Sub "${AWS::StackName}-WPDatabaseClientSG"
+  WPDatabaseSG:
+    Value: !Ref WPDatabaseSG
+    Export:
+      Name: !Sub "${AWS::StackName}-WPDatabaseSG"
+  WPCacheClientSG:
+    Value: !Ref WPCacheClientSG
+    Export:
+      Name: !Sub "${AWS::StackName}-WPCacheClientSG"
+  WPCacheSG:
+    Value: !Ref WPCacheSG
+    Export:
+      Name: !Sub "${AWS::StackName}-WPCacheSG"
+  WPFSClientSG:
+    Value: !Ref WPFSClientSG
+    Export:
+      Name: !Sub "${AWS::StackName}-WPFSClientSG"
+  WPFSSG:
+    Value: !Ref WPFSSG
+    Export:
+      Name: !Sub "${AWS::StackName}-WPFSSG"
+  WPLoadbalancerSG:
+    Value: !Ref WPLoadbalancerSG
+    Export:
+      Name: !Sub "${AWS::StackName}-WPLoadbalancerSG"
+  WPWordpressSG:
+    Value: !Ref WPWordpressSG
+    Export:
+      Name: !Sub "${AWS::StackName}-WPWordpressSG"

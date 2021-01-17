@@ -75,8 +75,8 @@ Resources:
       SecurityGroupIngress:
       - IpProtocol: tcp
         CidrIp: 0.0.0.0/0
-        FromPort: 3306
-        ToPort: 3306
+        FromPort: 80
+        ToPort: 80
   WPWordpressSG:
     Type: AWS::EC2::SecurityGroup
     Properties:

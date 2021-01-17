@@ -1,0 +1,247 @@
+Description: Cloudformation template to create a highly available wordpress deployment using Launch Configuration, ASG and Elastic LoadBalancer.
+Parameters:
+  InstanceTypes:
+    Type: String
+    Description: blah blah
+    AllowedValues:
+    - t2.small
+    - t2.medium
+    - t2.micro
+    - t2.nano
+    Default: t2.small
+  SecurityStackName:
+    Type: String
+    Description: blah blah
+    Default: wp-security
+  NetworkStackName:
+    Type: String
+    Description: blah blah
+    Default: wp-network
+  DatabaseStackName:
+    Type: String
+    Description: blah blah
+    Default: wp-database
+  FSStackName:
+    Type: String
+    Description: blah blah
+    Default: wp-efs
+
+Mappings:
+  RegionMap:
+    eu-west-1:
+      "HVM64": "ami-0eab41619a08cc289"
+    eu-west-2:
+      "HVM64": "ami-02001468f37a0519e"
+    eu-central-1:
+      "HVM64": "ami-08806ac26c006c18c"
+    us-east-1:
+      "HVM64": "ami-01151c46ffec20ad3"
+    us-east-2:
+      "HVM64": "ami-09c18af55c950e78f"
+    us-west-2:
+      "HVM64": "ami-03ef0decd4b2b21b7"
+    ap-southeast-1:
+      "HVM64": "ami-035b8bea67aeafba8"
+Resources:
+  WPLaunchConfig:
+    Type: AWS::AutoScaling::LaunchConfiguration
+    Properties:
+      ImageId: !FindInMap [RegionMap,!Ref AWS::Region,HVM64]
+      SecurityGroups:
+      - Fn::ImportValue: !Sub "${SecurityStackName}-WPWordpressSG"
+      - Fn::ImportValue: !Sub "${SecurityStackName}-WPFSClientSG"
+      - Fn::ImportValue: !Sub "${SecurityStackName}-WPCacheClientSG"
+      - Fn::ImportValue: !Sub "${SecurityStackName}-WPDatabaseClientSG"
+      InstanceType: !Ref InstanceTypes
+      UserData:
+        Fn::Base64:
+          Fn::Sub:
+          - |
+            #!/bin/bash -xe
+            sudo su
+            DB_PASSWORD="h5bvw1o1P2lrrpsA2N6x"
+            WP_ADMIN="wpadmin"
+            WP_PASSWORD="h5bvw1o1P2lrrpsA2N6x"
+            yum update -y
+            yum install -y awslogs httpd24 mysql56 php55 php55-devel php55-pear php55-mysqlnd gcc-c++ php55-opcache nfs-utils
+
+            mkdir -p /var/www/wordpress
+            mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2 ${EFS_MOUNT}:/ /var/www/wordpress
+
+            ## create site config
+            cat <<EOF >/etc/httpd/conf.d/wordpress.conf
+            ServerName 127.0.0.1:80
+            DocumentRoot /var/www/wordpress/wordpress
+            <Directory /var/www/wordpress/wordpress>
+              Options Indexes FollowSymLinks
+              AllowOverride All
+              Require all granted
+            </Directory>
+            EOF
+
+            ## install cache client
+            pecl install igbinary-2.0.8
+            wget -P /tmp/ https://s3.amazonaws.com/aws-refarch/wordpress/latest/bits/AmazonElastiCacheClusterClient-1.0.1-PHP55-64bit.tgz
+            tar -xf '/tmp/AmazonElastiCacheClusterClient-1.0.1-PHP55-64bit.tgz'
+            cp 'AmazonElastiCacheClusterClient-1.0.0/amazon-elasticache-cluster-client.so' /usr/lib64/php/5.5/modules/
+            if [ ! -f /etc/php-5.5.d/50-memcached.ini ]; then
+                touch /etc/php-5.5.d/50-memcached.ini
+            fi
+            echo 'extension=igbinary.so;' >> /etc/php-5.5.d/50-memcached.ini
+            echo 'extension=/usr/lib64/php/5.5/modules/amazon-elasticache-cluster-client.so;' >> /etc/php-5.5.d/50-memcached.ini
+
+            ## install wordpress
+            if [ ! -f /bin/wp/wp-cli.phar ]; then
+              curl -o /bin/wp https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
+              chmod +x /bin/wp
+            fi
+            # make site directory
+            if [ ! -d /var/www/wordpress/wordpress ]; then
+              mkdir -p /var/www/wordpress/wordpress
+              cd /var/www/wordpress/wordpress
+              # install wordpress if not installed
+              # use public alb host name if wp domain name was empty
+              if ! $(wp core is-installed --allow-root); then
+                  wp core download --version='4.9' --locale='en_GB' --allow-root
+                  wp core config --dbname="${DB_NAME}" --dbuser="${DB_USERNAME}" --dbpass="$DB_PASSWORD" --dbhost="${DB_HOSTNAME}" --dbprefix=wp_ --allow-root
+                  wp core install --url="http://${LB_HOSTNAME}" --title='Wordpress on AWS' --admin_user="$WP_ADMIN" --admin_password="$WP_PASSWORD" --admin_email='admin@example.com' --allow-root
+                  wp plugin install w3-total-cache --allow-root
+                    # sed -i \"/$table_prefix = 'wp_';/ a \\define('WP_HOME', 'http://' . \\$_SERVER['HTTP_HOST']); \" /var/www/wordpress/wordpress/wp-config.php
+                    # sed -i \"/$table_prefix = 'wp_';/ a \\define('WP_SITEURL', 'http://' . \\$_SERVER['HTTP_HOST']); \" /var/www/wordpress/wordpress/wp-config.php
+                    # enable HTTPS in wp-config.php if ACM Public SSL Certificate parameter was not empty
+                    # sed -i \"/$table_prefix = 'wp_';/ a \\# No ACM Public SSL Certificate \" /var/www/wordpress/wordpress/wp-config.php
+                    # set permissions of wordpress site directories
+                  chown -R apache:apache /var/www/wordpress/wordpress
+                  chmod u+wrx /var/www/wordpress/wordpress/wp-content/*
+                  if [ ! -f /var/www/wordpress/wordpress/opcache-instanceid.php ]; then
+                    wget -P /var/www/wordpress/wordpress/ https://s3.amazonaws.com/aws-refarch/wordpress/latest/bits/opcache-instanceid.php
+                  fi
+              fi
+              RESULT=$?
+              if [ $RESULT -eq 0 ]; then
+                  touch /var/www/wordpress/wordpress/wordpress.initialized
+              else
+                  touch /var/www/wordpress/wordpress/wordpress.failed
+              fi
+            fi
+
+              ## install opcache
+            if [ ! -d /var/www/.opcache ]; then
+                mkdir -p /var/www/.opcache
+            fi
+              # enable opcache in /etc/php-5.5.d/opcache.ini
+            sed -i 's/;opcache.file_cache=.*/opcache.file_cache=\/var\/www\/.opcache/' /etc/php-5.5.d/opcache.ini
+            sed -i 's/opcache.memory_consumption=.*/opcache.memory_consumption=512/' /etc/php-5.5.d/opcache.ini
+              # download opcache-instance.php to verify opcache status
+            if [ ! -f /var/www/wordpress/wordpress/opcache-instanceid.php ]; then
+                wget -P /var/www/wordpress/wordpress/ https://s3.amazonaws.com/aws-refarch/wordpress/latest/bits/opcache-instanceid.php
+            fi
+
+            chkconfig httpd on
+            service httpd start
+          - EFS_MOUNT: !ImportValue "${FSStackName}-FSURI"
+            DB_NAME: !ImportValue "${DatabaseStackName}-DBName"
+            DB_HOSTNAME: !ImportValue "{DatabaseStackName}-ClusterEndpoint"
+            DB_USERNAME: !ImportValue "${DatabaseStackName}-Username"
+            LB_HOSTNAME: !GetAtt WPLoadBalancer.DNSName
+            
+
+  WPASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: wp-asg
+      LaunchConfigurationName: !Ref WPLaunchConfig
+      VPCZoneIdentifier:
+      - Fn::ImportValue: !Sub "${NetworkStackName}-ApplicationSubnet01"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-ApplicationSubnet02"
+      MaxSize: '5'
+      MinSize: '2'
+      DesiredCapacity: '3'
+      HealthCheckType: EC2
+      Cooldown: '240'
+      HealthCheckGracePeriod: 300
+      TargetGroupARNs: 
+      - !Ref WPTargetGroup
+      MetricsCollection:
+      - Granularity: 1Minute
+        Metrics:
+        - GroupMinSize
+        - GroupMaxSize
+        - GroupDesiredCapacity
+        - GroupInServiceInstances
+        - GroupPendingInstances
+        - GroupStandbyInstances
+        - GroupTerminatingInstances
+        - GroupTotalInstances
+        - GroupInServiceCapacity
+        - GroupPendingCapacity
+        - GroupStandbyCapacity
+        - GroupTerminatingCapacity
+        - GroupTotalCapacity
+      Tags:
+      - Key: Name
+        Value: wp-ha-app
+        PropagateAtLaunch: true
+      - Key: Owner
+        Value: Emmanuel
+        PropagateAtLaunch: true
+      - Key: Application
+        Value: Wordpress
+        PropagateAtLaunch: true
+      - Key: Activity
+        Value: AWS Workshop
+        PropagateAtLaunch: true
+  WPLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Subnets:
+      - Fn::ImportValue: !Sub "${NetworkStackName}-PublicSubnet01"
+      - Fn::ImportValue: !Sub "${NetworkStackName}-PublicSubnet02"
+      IpAddressType: ipv4
+      Name: WP-HA-LoadBalancer
+      Scheme: internet-facing
+      SecurityGroups:
+      - Fn::ImportValue: !Sub "${SecurityStackName}-WPLoadbalancerSG"
+      LoadBalancerAttributes:
+      - Key: deletion_protection.enabled
+        Value: 'false'
+      Tags:
+      - Key: Name
+        Value: WP-HA-LoadBalancer
+      - Key: Owner
+        Value: Emmanuel
+      - Key: Application
+        Value: Wordpress
+      - Key: Activity
+        Value: AWS Workshop
+  WPTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 10
+      HealthCheckTimeoutSeconds: 5
+      HealthCheckPort: '80'
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthyThresholdCount: 2
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStackName}-VpcId"
+  WPLBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref WPLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+      - Order: 1
+        TargetGroupArn: !Ref WPTargetGroup
+        Type: forward
+Outputs:
+  WPLBDNS:
+    Value: !GetAtt WPLoadBalancer.DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-LBURL"

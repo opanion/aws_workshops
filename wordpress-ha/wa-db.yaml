@@ -104,7 +104,7 @@ Resources:
       Engine: aurora-mysql
       Tags:
       - Key: Name
-        Value: WPDatabaseCluster
+        Value: WPDatabaseInstance
       - Key: Owner
         Value: Emmanuel
       - Key: Application
@@ -125,7 +125,7 @@ Resources:
       Engine: aurora-mysql
       Tags:
       - Key: Name
-        Value: WPDatabaseCluster
+        Value: WPDatabaseInstance
       - Key: Owner
         Value: Emmanuel
       - Key: Application

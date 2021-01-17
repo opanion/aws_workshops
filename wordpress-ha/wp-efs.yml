@@ -43,12 +43,8 @@ Resources:
         Fn::ImportValue: !Sub "${NetworkStackName}-DataSubnet02"
       SecurityGroups:
       - Fn::ImportValue: !Sub "${SecurityStackName}-WPFSSG"
-  AccessPointResource:
-    Type: AWS::EFS::AccessPoint
-    Properties:
-      FileSystemId: !Ref WPFSResource
 Outputs:
-  FSAPURI:
-    Value: !Ref AccessPointResource
+  FSURI:
+    Value: !Join ['',[!Ref WPFSResource,".efs.",!Ref "AWS::Region",".amazonaws.com"]]
     Export:
-      Name: !Sub "${AWS::StackName}-FSAPURI"
+      Name: !Sub "${AWS::StackName}-FSURI"
